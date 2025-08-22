@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: vibe-triolingo-db
+    environment:
+      POSTGRES_DB: vibe_triolingo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/prisma/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - vibe-triolingo-network
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: vibe-triolingo-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - vibe-triolingo-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: vibe-triolingo-backend
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/vibe_triolingo
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: your-dev-jwt-secret-key
+      PORT: 5000
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - vibe-triolingo-network
+    command: npm run dev
+
+  # Frontend Application
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: vibe-triolingo-frontend
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:5000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - vibe-triolingo-network
+    command: npm run dev
+
+  # Prisma Studio (Database GUI)
+  prisma-studio:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: vibe-triolingo-prisma-studio
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/vibe_triolingo
+    ports:
+      - "5555:5555"
+    depends_on:
+      - postgres
+    networks:
+      - vibe-triolingo-network
+    command: npx prisma studio --hostname 0.0.0.0 --port 5555
+
+volumes:
+  postgres_data:
+
+networks:
+  vibe-triolingo-network:
+    driver: bridge
